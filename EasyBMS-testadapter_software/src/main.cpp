@@ -28,6 +28,7 @@ int buttonStateDIP2;
 int buttonStateDIP3;
 int step;               //counter for the step sequence
 String StepMessage;
+String StepMessage2;
 long int timer1;
 long int timedelay1;
 
@@ -35,8 +36,12 @@ void read_all_buttons();
 void testdrawchar(void);
 void testregime();
 void writeMessageOnDisplay(String message);
+void writeMessage2OnDisplay(String message);
 bool checkTimer();
 void setTimer(long int timedelay);
+void writeStepOnDisplay();
+
+
 
 // the setup function runs once when you press reset or power the board
 void setup() {
@@ -85,22 +90,12 @@ void loop() {
   
   read_all_buttons();
   testregime();
+  display.clearDisplay();
+  writeStepOnDisplay();
   writeMessageOnDisplay(StepMessage);
-  //writeMessageOnDisplay("Fehler");
-//digitalWrite(OUT_LED_RED, LOW);    // turn the LED off by making the voltage LOW
-  //digitalWrite(OUT_LED_GREEN, LOW);   // turn the LED on (HIGH is the voltage level)
-  //digitalWrite(OUT_MOSFET1, LOW); 
-  //digitalWrite(OUT_MOSFET2, LOW);
-  //display.clearDisplay(); 
-  //display.setCursor(120, 10);     // Start at top-left corner
-  //display.println(buttonStatePush);
-  //display.setCursor(0, 20);     // Start at top-left corner
-  //display.println(buttonStateDIP1);
-  //display.setCursor(0, 30);     // Start at top-left corner
-  //display.println(buttonStateDIP2);
-  //display.setCursor(0, 40);     // Start at top-left corner
-  //display.println(buttonStateDIP3);
-  //display.display();
+  writeMessage2OnDisplay(StepMessage2);
+  display.display();
+
   delay(100);                       // wait for a second
 
 }
@@ -110,41 +105,45 @@ void testregime()
   switch (step) {
   case 0:
     //Initial step
-    Serial.println(step);
-    step=10;
-    //StepMessage="inital step";
-    setTimer(1000);
-    
-    break;
-  case 10:
-    // Statement(s)
-    //step=20;
-    StepMessage="Schritt 10";
-    Serial.println(step);
-    if(checkTimer())
-    {
-      step=20;
+    StepMessage="Test bereit";
+    StepMessage2="Taster druecken";
+    if(buttonStatePush)
+    {  
+      step=10;
+      setTimer(1000);
     }
     break;
-  case 20:
-    Serial.println(step);
-    step=30;
-    StepMessage="Schritt 20";
-    setTimer(1000);
-    break;
-  case 30:
 
-    Serial.println(step);
-    StepMessage="Schritt 30";
-    
+  case 10:
+    //
+    StepMessage="Starte Kommunikation";
+    StepMessage2="Sende befehle";
     if(checkTimer())
+      step=20;
+    break;
+
+  case 20:
+    //
+    step=30;
+    setTimer(1000);
+
+  case 30:
+    //
+    StepMessage="Antwort erhalten";
+    digitalWrite(OUT_LED_GREEN, HIGH);   // turn the LED on (HIGH is the voltage level)
+    StepMessage2="Alles gut";
+    if(checkTimer())
+    {
       step=0;
-    break;          
-  
+      digitalWrite(OUT_LED_GREEN, LOW);  
+    }
+    break;
+
   default:
-    // Statement(s)
-    break; // Wird nicht benötigt, wenn Statement(s) vorhanden sind
-}
+    //Fehler
+    StepMessage="Fehler Schrittkette";
+    break;
+  }
 }
 
 void setTimer(long int timedelay)
@@ -202,13 +201,32 @@ void testdrawchar(void){
   delay(2000);
 }
 
+
 void writeMessageOnDisplay(String message)
 {
-  display.clearDisplay();
   display.setTextSize(1);      // Normal 1:1 pixel scale
   display.setTextColor(WHITE); // Draw white text
-  display.setCursor(0, 0);     // Start at top-left corner
+  display.setCursor(0, 10);     // Start at top-left corner
   display.cp437(true);         // Use full 256 char 'Code Page 437' font
   display.println(message);
-  display.display();
+}
+
+void writeMessage2OnDisplay(String message)
+{
+  display.setTextSize(1);      // Normal 1:1 pixel scale
+  display.setTextColor(WHITE); // Draw white text
+  display.setCursor(0, 20);     // Start at top-left corner
+  display.cp437(true);         // Use full 256 char 'Code Page 437' font
+  display.println(message);
+}
+
+
+void writeStepOnDisplay()
+{
+  display.setTextSize(1);      // Normal 1:1 pixel scale
+  display.setTextColor(WHITE); // Draw white text
+  display.setCursor(100, 0);     // Start at top-left corner
+  display.cp437(true);         // Use full 256 char 'Code Page 437' font
+  display.println(step);
+ 
 }

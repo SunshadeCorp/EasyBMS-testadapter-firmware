@@ -8,6 +8,8 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <string.h>
+#include <ESP8266WiFi.h>
+#include <uMQTTBroker.h>
 
 #define OUT_LED_RED D5
 #define OUT_LED_GREEN D6
@@ -22,6 +24,9 @@
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+uMQTTBroker myBroker;
+
+
 int buttonStatePush;
 int buttonStateDIP1;
 int buttonStateDIP2;
@@ -53,7 +58,8 @@ void setup() {
   pinMode(IN_SW_PUSH, INPUT);
   pinMode(IN_SW_DIP1, INPUT);
   pinMode(IN_SW_DIP2, INPUT);
-  pinMode(IN_SW_DIP3, INPUT);    
+  pinMode(IN_SW_DIP3, INPUT);
+
   Serial.begin(9600);
   step=0;
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) 
@@ -63,6 +69,18 @@ void setup() {
   }
   display.display();
   delay(2000); // Pause for 2 seconds
+  Serial.println("Konfiguriere soft-AP ... ");
+  boolean result = WiFi.softAP("WemosAP", "geheim123");
+  
+  Serial.print("Verbindung wurde ");
+  if(result == false){
+    Serial.println("NICHT ");
+  }
+  Serial.println("erfolgreich aufgebaut!");
+    // Start the broker
+  Serial.println("Starting MQTT broker");
+  myBroker.init();
+
 
   //Clear the buffer
   display.clearDisplay();
@@ -83,11 +101,7 @@ void setup() {
 
 // the loop function runs over and over again forever
 void loop() {
-  //digitalWrite(OUT_LED_RED, HIGH);   // turn the LED on (HIGH is the voltage level)
-  //digitalWrite(OUT_LED_GREEN, HIGH);   // turn the LED on (HIGH is the voltage level)
-  //digitalWrite(OUT_MOSFET1, HIGH); 
-  //digitalWrite(OUT_MOSFET2, HIGH); 
-  
+
   read_all_buttons();
   testregime();
   display.clearDisplay();
@@ -130,7 +144,7 @@ void testregime()
   case 30:
     //
     StepMessage="Antwort erhalten";
-    digitalWrite(OUT_LED_GREEN, HIGH);   // turn the LED on (HIGH is the voltage level)
+    digitalWrite(OUT_LED_GREEN, HIGH); 
     StepMessage2="Alles gut";
     if(checkTimer())
     {

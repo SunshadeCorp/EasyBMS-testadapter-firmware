@@ -11,6 +11,8 @@
 #include <ESP8266WiFi.h>
 #include <uMQTTBroker.h>
 
+
+
 #define OUT_LED_RED D5
 #define OUT_LED_GREEN D6
 #define OUT_MOSFET1 D7
@@ -25,7 +27,7 @@
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 uMQTTBroker myBroker;
-
+PubSubClient client(espClient);
 
 int buttonStatePush;
 int buttonStateDIP1;
@@ -80,7 +82,7 @@ void setup() {
     // Start the broker
   Serial.println("Starting MQTT broker");
   myBroker.init();
-
+  client.subscribe("inTopic");
 
   //Clear the buffer
   display.clearDisplay();

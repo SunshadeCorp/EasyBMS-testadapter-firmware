@@ -10,7 +10,7 @@
 #include <string.h>
 #include <ESP8266WiFi.h>
 
-#include "uMQTTBroker.h"
+#include "MyMQTTBroker.h"
 
 
 #define OUT_LED_RED D5
@@ -26,7 +26,7 @@
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-uMQTTBroker myBroker;
+MyMQTTBroker myBroker;
 //PubSubClient client(espClient);
 
 int buttonStatePush;
@@ -90,13 +90,34 @@ void setup() {
     // Start the broker
   Serial.println("Starting MQTT broker");
   myBroker.init();
-  myBroker.subscribe("module_voltage");
-  //client.subscribe("inTopic");
-  //client.setCallback(callback);
 
+  /*
+  esp-module/{{module-number}}/uptime
+  esp-module/{{module-number}}/module_voltage
+  esp-module/{{module-number}}/module_temps
+  esp-module/{{module-number}}/chip_temp
+  esp-module/{{module-number}}/timediff
+
+  esp-module/{{module-number}}/cell/{{cell-number}}/is_balancing
+  esp-module/{{module-number}}/cell/{{cell-number}}/voltage
+  */
+
+  int module_number = 0; // TODO: get this
+  myBroker.subscribe(String("esp-module/") + module_number + "/uptime");
+  myBroker.subscribe(String("esp-module/") + module_number + "/module_voltage");
+  myBroker.subscribe(String("esp-module/") + module_number + "/module_temps");
+  myBroker.subscribe(String("esp-module/") + module_number + "/chip_temp");
+  myBroker.subscribe(String("esp-module/") + module_number + "/timediff");
+
+  int number_of_cells = 12;
+  for(int cell_number = 0; cell_number < number_of_cells; cell_number++) {
+    myBroker.subscribe(String("esp-module/") + module_number + "/cell/" + cell_number + "/is_balancing");
+    myBroker.subscribe(String("esp-module/") + module_number + "/cell/" + cell_number + "/voltage");
+  } 
+  
   //Clear the buffer
   display.clearDisplay();
-  testdrawchar();      // Draw characters of the default font
+  testdrawchar(); // Draw characters of the default font
   delay(500); // Pause for 2 seconds
   display.clearDisplay();
   display.setTextSize(1);      // Normal 1:1 pixel scale

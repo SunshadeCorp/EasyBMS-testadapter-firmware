@@ -27,7 +27,7 @@
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 uMQTTBroker myBroker;
-PubSubClient client(espClient);
+//PubSubClient client(espClient);
 
 int buttonStatePush;
 int buttonStateDIP1;
@@ -48,6 +48,14 @@ bool checkTimer();
 void setTimer(long int timedelay);
 void writeStepOnDisplay();
 
+/*
+TODO:
+
+Welche Topics müssen subscribed werden?
+Welche Topics müssen published werden?
+
+
+*/
 
 
 // the setup function runs once when you press reset or power the board
@@ -82,7 +90,9 @@ void setup() {
     // Start the broker
   Serial.println("Starting MQTT broker");
   myBroker.init();
-  client.subscribe("inTopic");
+  myBroker.subscribe("module_voltage");
+  //client.subscribe("inTopic");
+  //client.setCallback(callback);
 
   //Clear the buffer
   display.clearDisplay();

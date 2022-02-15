@@ -22,6 +22,23 @@
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
+enum class TestState {
+  button_pressed,
+  idle,
+  test_cell_voltages_zero,
+  activate_cell_voltages,
+  test_cell_voltages_real,
+  test_cell_balancing,
+  test_total_voltage,
+  test_finished,
+};
+
+struct DipSwitch {
+  uint8_t DIP1 : 1;
+  uint8_t DIP2 : 1;
+  uint8_t DIP3 : 1;
+};
+
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 const char * wifi_ssid = "Vodafone-A054";
@@ -36,15 +53,16 @@ String availability_topic = "easybms-test-adapter/available";
 WiFiClient wifiClient;
 PubSubClient client(mqtt_host, mqtt_port, wifiClient);
 
-int buttonStatePush;
-int buttonStateDIP1;
-int buttonStateDIP2;
-int buttonStateDIP3;
 String StepMessage;
 String StepMessage2;
 long int timer1;
 long int timedelay1;
 TestState state;
+
+auto module_number = 0;
+auto mac_address = 0x0000000000000000;
+auto balance_time_ms = 5000;
+int number_of_cells = 12;
 
 void read_all_buttons();
 void testdrawchar(void);
@@ -54,13 +72,6 @@ void writeMessage2OnDisplay(String message);
 bool checkTimer();
 void setTimer(long int timedelay);
 void writeStepOnDisplay();
-
-enum class TestState {
-  button_pressed,
-  write_on_display,
-  idle,
-  measure_cell_voltage,
-};
 
 /*
 TODO:
@@ -146,7 +157,6 @@ void reconnect_mqtt()
       client.subscribe((String("esp-module/") + module_number + "/chip_temp").c_str());
       client.subscribe((String("esp-module/") + module_number + "/timediff").c_str());
 
-      int number_of_cells = 12;
       for(int cell_number = 0; cell_number < number_of_cells; cell_number++) {
         client.subscribe((String("esp-module/") + module_number + "/cell/" + cell_number + "/is_balancing").c_str());
         client.subscribe((String("esp-module/") + module_number + "/cell/" + cell_number + "/voltage").c_str());
@@ -174,6 +184,30 @@ void mqtt_callback(char *topic, byte *payload, unsigned int length) {
     } else if (payload_string == "off") {
     }
   }
+}
+
+bool read_switch()
+{
+  return analogRead(IN_SW_PUSH) < 400;
+}
+
+DipSwitch read_dip_switches()
+{
+  DipSwitch switches;
+  switches.DIP1 = !digitalRead(IN_SW_DIP1);
+  switches.DIP2 = !digitalRead(IN_SW_DIP2);
+  switches.DIP3 = !digitalRead(IN_SW_DIP3);
+
+  return switches;
+  
+}
+
+void write_on_display(String message1, String message2) {
+  display.clearDisplay();
+  writeStepOnDisplay();
+  writeMessageOnDisplay(message1);
+  writeMessage2OnDisplay(message2);
+  display.display();
 }
 
 // the setup function runs once when you press reset or power the board
@@ -218,48 +252,95 @@ void setup() {
   delay(500);                       // wait for a second       
 
   Serial.println("Finished Setup");
+  write_on_display("Test bereit", "Taster drücken");
 }
 
 
-void publish_switch_state() {
-  //client.publish(state_topic.c_str(), get_switch_state().c_str(), true);
-  //client.publish(available_topic.c_str(), "online", true);
-
-  auto module_number = 0;
-  auto cell_number = 0;
-  auto balance_time_ms = 25000; 
-
-
-  client.publish((String("esp-module/") + module_number + "/cell/" + cell_number + "/balance_request").c_str(), String(balance_time_ms).c_str(), true);
+bool publish_balance_start(int cell_number) {
+    return client.publish((String("esp-module/") + module_number + "/cell/" + cell_number + "/balance_request").c_str(), String(balance_time_ms).c_str(), true);
 }
 
-void write_on_display(String message1, String message2) {
-  display.clearDisplay();
-  writeStepOnDisplay();
-  writeMessageOnDisplay(message1);
-  writeMessage2OnDisplay(message2);
-  display.display();
+bool publish_meas_total_voltage() {
+  return client.publish((String("esp-module/") + mac_address + "/set_config").c_str(), String(String(module_number) + ",1,0").c_str(), true);
 }
 
 // the loop function runs over and over again forever
 void loop() {
+  static int balancing_cell_counter = 0;
+  static bool test_passed = false;
   Serial.println("Starting loop");
-  read_all_buttons();
-  testregime();
 
   switch (state) {
-    //case TestState::button_pressed:
-    //  break;
-
     case TestState::idle:
+      if(read_switch())
+      {
+        state = TestState::button_pressed;
+      }
       break;
+    case TestState::button_pressed:
+      write_on_display("Taster gedrückt", "Test startet");
+      read_dip_switches();
+      digitalWrite(OUT_MOSFET2, HIGH);
+      digitalWrite(OUT_LED_GREEN, LOW);
+      digitalWrite(OUT_LED_RED, LOW);
+      state = TestState::test_cell_voltages_zero;
+      break;
+    case TestState::test_cell_voltages_zero:
+      write_on_display("Test 0 V", "Zellspannungen");
+      // check if all cell voltages like expected (0 V)
+      state = TestState::activate_cell_voltages;
+      break;
+    case TestState::activate_cell_voltages:
+      write_on_display("Aktiviere", "Zellspannungen");
+      digitalWrite(OUT_MOSFET1, HIGH);
+      state = TestState::test_cell_voltages_real;
+      break;
+    case TestState::test_cell_voltages_real:
+      write_on_display("Test echte", "Zellspannungen");
+      // check if all cell voltage are like expected (total voltage / number_of_cells)
+      state = TestState::test_cell_balancing;
+      break;
+    case TestState::test_cell_balancing:
+      if(balancing_cell_counter < number_of_cells)
+      {
+        publish_balance_start(++balancing_cell_counter);
+        write_on_display("Test balancing", "Zelle " + String(balancing_cell_counter));
+        // wait balance_time_ms
+        //check if cell voltage, which is balanced, drops by expected value (resistor divider)
+      }
+      else
+      {
+        balancing_cell_counter = 0;
+        state = TestState::test_total_voltage;
+      }
+      break;
+    case TestState::test_total_voltage:
+      write_on_display("Test ADC", "Gesamtspannung");
+      publish_meas_total_voltage();
+      // check if total voltage is expected value (Voltage of test supply)
+      state = TestState::test_finished;
+      break;
+    case TestState::test_finished:
+      if(test_passed)
+      {
+        digitalWrite(OUT_LED_GREEN, HIGH);
+        write_on_display("Test", "PASSED");
+      }
+      else
+      {
+        digitalWrite(OUT_LED_RED, HIGH);
+        write_on_display("Test", "FAILED!");
+      }
 
-    //case TestState::write_on_display:
-    //  write_on_display()
-    //  break;
+      digitalWrite(OUT_MOSFET1, LOW);
+      digitalWrite(OUT_MOSFET2, LOW);
+      state = TestState::idle;
+      break;
 
     default:
       Serial.println("Unknown Test State");
+      state = TestState::idle;
+      break;
   }
 
 }
@@ -267,10 +348,7 @@ void loop() {
 
 void testregime()
 {
-  write_on_display("Test bereit", "Taster drücken")
-  wait_for_button();
-
-
+//  wait_for_button();
 
   /*
   switch (step) {
@@ -339,21 +417,6 @@ bool checkTimer()
     }
 }
 
-void read_all_buttons()
-{
-  int sensorValue = analogRead(IN_SW_PUSH);
-  //Serial.println(sensorValue);
-  if(sensorValue<400)
-    buttonStatePush=1;
-  else
-    buttonStatePush=0;
-
-  buttonStateDIP1= !digitalRead(IN_SW_DIP1);
-  buttonStateDIP2= !digitalRead(IN_SW_DIP2);
-  buttonStateDIP3= !digitalRead(IN_SW_DIP3);
-  
-}
-
 void testdrawchar(void){
   display.clearDisplay();
 
@@ -399,6 +462,5 @@ void writeStepOnDisplay()
   display.setTextColor(WHITE); // Draw white text
   display.setCursor(100, 0);     // Start at top-left corner
   display.cp437(true);         // Use full 256 char 'Code Page 437' font
-  display.println(step);
  
 }

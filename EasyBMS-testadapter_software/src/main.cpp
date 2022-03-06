@@ -31,6 +31,7 @@ enum class TestState {
   test_cell_voltages_real,
   test_cell_balancing,
   test_aux_voltage,
+  test_temp_voltages,
   test_finished,
 };
 
@@ -287,7 +288,7 @@ void loop() {
       state = TestState::test_conf_slave;
       break;
     case TestState::test_conf_slave:
-      write_on_display("Test config", "over MQTT");
+      write_on_display("Test konfiguration", "über MQTT");
       // configure slave over MQTT based on his published MAC address
       state = TestState::test_cell_voltages_zero;
       break;
@@ -324,6 +325,10 @@ void loop() {
       write_on_display("Test ADC", "Gesamtspannung");
       publish_meas_total_voltage();
       // check if total voltage is expected value (Voltage of test supply)
+      state = TestState::test_temp_voltages;
+      break;
+    case TestState::test_temp_voltages:
+      write_on_display("Test Temperatursensoren", "Gesamtspannung");
       state = TestState::test_finished;
       break;
     case TestState::test_finished:

@@ -23,8 +23,9 @@
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
 enum class TestState {
-  button_pressed,
   idle,
+  button_pressed,
+  test_conf_slave,
   test_cell_voltages_zero,
   activate_cell_voltages,
   test_cell_voltages_real,
@@ -283,6 +284,11 @@ void loop() {
       digitalWrite(OUT_MOSFET2, HIGH);
       digitalWrite(OUT_LED_GREEN, LOW);
       digitalWrite(OUT_LED_RED, LOW);
+      state = TestState::test_conf_slave;
+      break;
+    case TestState::test_conf_slave:
+      write_on_display("Test config", "over MQTT");
+      // configure slave over MQTT based on his published MAC address
       state = TestState::test_cell_voltages_zero;
       break;
     case TestState::test_cell_voltages_zero:

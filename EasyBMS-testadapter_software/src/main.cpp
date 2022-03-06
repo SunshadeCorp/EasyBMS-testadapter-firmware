@@ -61,10 +61,11 @@ long int timer1;
 long int timedelay1;
 TestState state;
 
-auto module_number = 0;
-auto mac_address = 0x0000000000000000;
+String module_number = "1";
+String mac_address = "undefined";
 auto balance_time_ms = 5000;
 int number_of_cells = 12;
+bool config_successfull = false;
 
 void read_all_buttons();
 void testdrawchar(void);
@@ -151,17 +152,19 @@ void reconnect_mqtt()
       // Once connected, publish an announcement...
       client.publish(availability_topic.c_str(), "online", true);
 
+      client.subscribe("esp-module/+/available");
+
       // Routes to subscribe
-      int module_number = 0; 
-      client.subscribe((String("esp-module/") + module_number + "/uptime").c_str());
-      client.subscribe((String("esp-module/") + module_number + "/module_voltage").c_str());
-      client.subscribe((String("esp-module/") + module_number + "/module_temps").c_str());
-      client.subscribe((String("esp-module/") + module_number + "/chip_temp").c_str());
-      client.subscribe((String("esp-module/") + module_number + "/timediff").c_str());
+      client.subscribe(String("esp-module/" + module_number + "/available").c_str());
+      client.subscribe(String("esp-module/" + module_number + "/uptime").c_str());
+      client.subscribe(String("esp-module/" + module_number + "/module_voltage").c_str());
+      client.subscribe(String("esp-module/" + module_number + "/module_temps").c_str());
+      client.subscribe(String("esp-module/" + module_number + "/chip_temp").c_str());
+      client.subscribe(String("esp-module/" + module_number + "/timediff").c_str());
 
       for(int cell_number = 0; cell_number < number_of_cells; cell_number++) {
-        client.subscribe((String("esp-module/") + module_number + "/cell/" + cell_number + "/is_balancing").c_str());
-        client.subscribe((String("esp-module/") + module_number + "/cell/" + cell_number + "/voltage").c_str());
+        client.subscribe(String("esp-module/" + module_number + "/cell/" + cell_number + "/is_balancing").c_str());
+        client.subscribe(String("esp-module/" + module_number + "/cell/" + cell_number + "/voltage").c_str());
       } 
     }
     else
@@ -178,14 +181,19 @@ void reconnect_mqtt()
 
 void mqtt_callback(char *topic, byte *payload, unsigned int length) {
   String topic_string = String(topic);
-  String payload_string = String();
+  String payload_string;
   payload_string.concat((char *) payload, length);
 
-  if (topic_string == "xyz") {
-    if (payload_string == "xy") {
-    } else if (payload_string == "off") {
-    }
+  if (topic_string.endsWith("available"))
+  {
+    String parsed  = topic_string.substring(topic_string.indexOf("/") + 1, topic_string.lastIndexOf("/"));
+
+    if (parsed.length() < 3 && parsed == module_number)
+      config_successfull = true;
+    else
+      mac_address = parsed;
   }
+  if ()
 }
 
 bool read_switch()
@@ -259,11 +267,13 @@ void setup() {
 
 
 bool publish_balance_start(int cell_number) {
-    return client.publish((String("esp-module/") + module_number + "/cell/" + cell_number + "/balance_request").c_str(), String(balance_time_ms).c_str(), true);
+    reconnect_mqtt();
+    return client.publish(String("esp-module/" + module_number + "/cell/" + cell_number + "/balance_request").c_str(), String(balance_time_ms).c_str(), true);
 }
 
-bool publish_meas_total_voltage() {
-  return client.publish((String("esp-module/") + mac_address + "/set_config").c_str(), String(String(module_number) + ",1,0").c_str(), true);
+bool publish_slave_config() {
+  reconnect_mqtt();
+  return client.publish(String("esp-module/" + mac_address + "/set_config").c_str(), String(module_number + ",1,0").c_str(), true);   // Slave konfiguriert mit Modulnummer 1 und als Gesamtspannungsmesser
 }
 
 // the loop function runs over and over again forever
@@ -288,9 +298,15 @@ void loop() {
       state = TestState::test_conf_slave;
       break;
     case TestState::test_conf_slave:
+      if(mac_address == "undefined")
+        break;
+
+      publish_slave_config();
       write_on_display("Test konfiguration", "über MQTT");
       // configure slave over MQTT based on his published MAC address
-      state = TestState::test_cell_voltages_zero;
+      if(config_successfull)
+        state = TestState::test_cell_voltages_zero;
+        
       break;
     case TestState::test_cell_voltages_zero:
       write_on_display("Test 0 V", "Zellspannungen");
@@ -345,6 +361,7 @@ void loop() {
 
       digitalWrite(OUT_MOSFET1, LOW);
       digitalWrite(OUT_MOSFET2, LOW);
+      mac_address = "undefined";
       state = TestState::idle;
       break;
 

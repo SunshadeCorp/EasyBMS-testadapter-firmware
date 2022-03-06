@@ -30,7 +30,7 @@ enum class TestState {
   activate_cell_voltages,
   test_cell_voltages_real,
   test_cell_balancing,
-  test_total_voltage,
+  test_aux_voltage,
   test_finished,
 };
 
@@ -312,15 +312,15 @@ void loop() {
         publish_balance_start(++balancing_cell_counter);
         write_on_display("Test balancing", "Zelle " + String(balancing_cell_counter));
         // wait balance_time_ms
-        //check if cell voltage, which is balanced, drops by expected value (resistor divider)
+        //check if cell voltage, which is balanced, drops to approx. 1,11V (resistor divider)
       }
       else
       {
         balancing_cell_counter = 0;
-        state = TestState::test_total_voltage;
+        state = TestState::test_aux_voltage;
       }
       break;
-    case TestState::test_total_voltage:
+    case TestState::test_aux_voltage:
       write_on_display("Test ADC", "Gesamtspannung");
       publish_meas_total_voltage();
       // check if total voltage is expected value (Voltage of test supply)

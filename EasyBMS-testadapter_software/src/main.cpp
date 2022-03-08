@@ -43,11 +43,11 @@ struct DipSwitch {
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-const char * wifi_ssid = "Vodafone-A054";
-const char * wifi_pw = "ZfPsTdk74daGbGFp";
-const char * mqtt_host = "xxx.xxx.xxx.xxx";
-const char * mqtt_user = "";
-const char * mqtt_pw = "";
+const char * wifi_ssid = "langsames Wlan";
+const char * wifi_pw = "500pspolo";
+const char * mqtt_host = "192.168.1.185";
+const char * mqtt_user = "easy-bms";
+const char * mqtt_pw = "batteriespeicher";
 const uint16_t mqtt_port = 1883;
 
 String availability_topic = "easybms-test-adapter/available";
@@ -152,7 +152,8 @@ void reconnect_mqtt()
       // Once connected, publish an announcement...
       client.publish(availability_topic.c_str(), "online", true);
 
-      client.subscribe("esp-module/+/available");
+      //client.subscribe("esp-module/+/available");
+      client.subscribe("esp-module/testroute/available");
 
       // Routes to subscribe
       client.subscribe(String("esp-module/" + module_number + "/available").c_str());
@@ -183,17 +184,21 @@ void mqtt_callback(char *topic, byte *payload, unsigned int length) {
   String topic_string = String(topic);
   String payload_string;
   payload_string.concat((char *) payload, length);
-
+  Serial.print("Callback came with topic: ");
+  Serial.println(topic);
   if (topic_string.endsWith("available"))
   {
     String parsed  = topic_string.substring(topic_string.indexOf("/") + 1, topic_string.lastIndexOf("/"));
 
     if (parsed.length() < 3 && parsed == module_number)
-      config_successfull = true;
+    {
+      config_successfull=true;
+    }  
     else
+    {
       mac_address = parsed;
+    } 
   }
-  if ()
 }
 
 bool read_switch()
@@ -234,6 +239,8 @@ void setup() {
 
   Serial.begin(74880);
   setup_wifi(wifi_ssid, wifi_pw);
+  reconnect_mqtt();
+
   client.setCallback(mqtt_callback);
 
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) 
@@ -243,11 +250,9 @@ void setup() {
   }
   display.display();
   delay(2000); // Pause for 2 seconds
-  Serial.println("Configuring soft-AP ... ");
   
     // Start the broker
-  Serial.println("Starting MQTT broker");
-  
+
   //Clear the buffer
   display.clearDisplay();
   testdrawchar(); // Draw characters of the default font
@@ -280,8 +285,8 @@ bool publish_slave_config() {
 void loop() {
   static int balancing_cell_counter = 0;
   static bool test_passed = false;
-  Serial.println("Starting loop");
-
+  //Serial.println("Starting loop");
+  reconnect_mqtt();
   switch (state) {
     case TestState::idle:
       if(read_switch())
@@ -291,6 +296,7 @@ void loop() {
       break;
     case TestState::button_pressed:
       write_on_display("Taster gedrückt", "Test startet");
+      Serial.println("button pressed, going on to test_conf_slave");
       read_dip_switches();
       digitalWrite(OUT_MOSFET2, HIGH);
       digitalWrite(OUT_LED_GREEN, LOW);
@@ -299,13 +305,21 @@ void loop() {
       break;
     case TestState::test_conf_slave:
       if(mac_address == "undefined")
+      {  
+        //Serial.println("No slave available");
         break;
-
+      }
       publish_slave_config();
       write_on_display("Test konfiguration", "über MQTT");
-      // configure slave over MQTT based on his published MAC address
+      
       if(config_successfull)
-        state = TestState::test_cell_voltages_zero;
+      {
+         state = TestState::test_cell_voltages_zero;
+      }
+
+      // configure slave over MQTT based on his published MAC address
+      //if(config_successfull)
+       
         
       break;
     case TestState::test_cell_voltages_zero:
@@ -339,7 +353,7 @@ void loop() {
       break;
     case TestState::test_aux_voltage:
       write_on_display("Test ADC", "Gesamtspannung");
-      publish_meas_total_voltage();
+      //publish_meas_total_voltage();
       // check if total voltage is expected value (Voltage of test supply)
       state = TestState::test_temp_voltages;
       break;
@@ -370,7 +384,6 @@ void loop() {
       state = TestState::idle;
       break;
   }
-
 }
 
 

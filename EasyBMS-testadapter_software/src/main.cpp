@@ -10,6 +10,8 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
+#include "credentials.h"
+
 #define OUT_LED_RED D5
 #define OUT_LED_GREEN D6
 #define OUT_MOSFET1 D7
@@ -43,17 +45,10 @@ struct DipSwitch {
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-const char * wifi_ssid = "langsames Wlan";
-const char * wifi_pw = "500pspolo";
-const char * mqtt_host = "192.168.1.185";
-const char * mqtt_user = "easy-bms";
-const char * mqtt_pw = "batteriespeicher";
-const uint16_t mqtt_port = 1883;
-
 String availability_topic = "easybms-test-adapter/available";
 
 WiFiClient wifiClient;
-PubSubClient client(mqtt_host, mqtt_port, wifiClient);
+PubSubClient client(mqtt_server, mqtt_port, wifiClient);
 
 String StepMessage;
 String StepMessage2;
@@ -146,7 +141,7 @@ void reconnect_mqtt()
   {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    if (client.connect(mqtt_host, mqtt_user, mqtt_pw, availability_topic.c_str(), 0, true, "offline"))
+    if (client.connect(mqtt_server, mqtt_username, mqtt_password, availability_topic.c_str(), 0, true, "offline"))
     {
       Serial.println("connected");
       // Once connected, publish an announcement...
@@ -238,7 +233,7 @@ void setup() {
   pinMode(IN_SW_DIP3, INPUT);
 
   Serial.begin(74880);
-  setup_wifi(wifi_ssid, wifi_pw);
+  setup_wifi(ssid, password);
   reconnect_mqtt();
 
   client.setCallback(mqtt_callback);

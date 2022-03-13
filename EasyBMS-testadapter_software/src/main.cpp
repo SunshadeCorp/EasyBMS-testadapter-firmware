@@ -55,10 +55,15 @@ long int timer1;
 String module_number = "1";
 String mac_address = "undefined";
 auto balance_time_ms = 5000;
-int number_of_cells = 12;
+unsigned int number_of_cells = 12;
 bool config_successfull = false;
 
+float voltages[12];
+float total_sys_volt;
+float module_temps[2];
+
 void read_all_buttons();
+String split(String s, char parser, int index);
 void testregime();
 bool timerPassed();
 void setTimer(long int timedelay);
@@ -149,8 +154,9 @@ void reconnect_mqtt()
       client.subscribe(String("esp-module/" + module_number + "/module_temps").c_str());
       client.subscribe(String("esp-module/" + module_number + "/chip_temp").c_str());
       client.subscribe(String("esp-module/" + module_number + "/timediff").c_str());
+      client.subscribe(String("esp-module/" + module_number + "/total_system_voltage").c_str());
 
-      for(int cell_number = 0; cell_number < number_of_cells; cell_number++) {
+      for(unsigned int cell_number = 0; cell_number < number_of_cells; cell_number++) {
         client.subscribe(String("esp-module/" + module_number + "/cell/" + cell_number + "/is_balancing").c_str());
         client.subscribe(String("esp-module/" + module_number + "/cell/" + cell_number + "/voltage").c_str());
       } 
@@ -192,11 +198,16 @@ void mqtt_callback(char *topic, byte *payload, unsigned int length) {
   }
   else if(topic_string.endsWith("module_temps"))
   {
-
+    module_temps[0] = split(topic_string, ',', 0).toFloat();
+    module_temps[1] = split(topic_string, ',', 1).toFloat();
   }
    else if(topic_string.endsWith("chip_temp"))
   {
 
+  }
+  else if(topic_string.endsWith("total_system_voltage"))
+  {
+    total_sys_volt = payload_string.toFloat();
   }
   else if(topic_string.endsWith("is_balancing"))
   {
@@ -204,7 +215,9 @@ void mqtt_callback(char *topic, byte *payload, unsigned int length) {
   }
   else if(topic_string.endsWith("voltage"))
   {
+    int cell_nr  = split(topic_string, '/', 3).toInt();
 
+    voltages[cell_nr - 1] = payload_string.toFloat();
   }
 }
 
@@ -221,6 +234,21 @@ DipSwitch read_dip_switches()
   switches.DIP3 = !digitalRead(IN_SW_DIP3);
 
   return switches;
+}
+
+String split(String s, char parser, int index) {
+  String rs="";
+  int parserCnt=0;
+  int rFromIndex=0, rToIndex=-1;
+  while (index >= parserCnt) {
+    rFromIndex = rToIndex+1;
+    rToIndex = s.indexOf(parser,rFromIndex);
+    if (index == parserCnt) {
+      if (rToIndex == 0 || rToIndex == -1) return "";
+      return s.substring(rFromIndex,rToIndex);
+    } else parserCnt++;
+  }
+  return rs;
 }
 
 void write_on_display(String message1, String message2 = "") {
@@ -287,7 +315,7 @@ bool publish_slave_config() {
 void loop() {
   static TestState state;
 
-  static int balancing_cell_counter = 0;
+  static unsigned int balancing_cell_counter = 0;
   static bool test_passed = false;
   //Serial.println("Starting loop");
   reconnect_mqtt();
@@ -295,6 +323,8 @@ void loop() {
 
   if(!timerPassed())
     return;
+
+  setTimer(2000);   // 2 seconds minimum loop time for every step
 
   switch (state) {
     case TestState::idle:
@@ -326,34 +356,59 @@ void loop() {
       if(config_successfull)
       {
          state = TestState::test_cell_voltages_zero;
-      }
-
-      // configure slave over MQTT based on his published MAC address
-      //if(config_successfull)
-       
+      }       
         
       break;
     case TestState::test_cell_voltages_zero:
       write_on_display("Test 0 V", "Zellspannungen");
       // check if all cell voltages like expected (0 V)
+      for (unsigned int i = 0; i < number_of_cells; i++)
+      {
+        if (voltages[i] > 0.1)
+        {
+          test_passed = false;
+          state = TestState::test_finished;
+          break;
+        }
+      }
       state = TestState::activate_cell_voltages;
       break;
     case TestState::activate_cell_voltages:
       write_on_display("Aktiviere", "Zellspannungen");
       digitalWrite(OUT_MOSFET1, HIGH);
+      setTimer(5000);
       state = TestState::test_cell_voltages_real;
       break;
     case TestState::test_cell_voltages_real:
       write_on_display("Test echte", "Zellspannungen");
       // check if all cell voltage are like expected (total voltage / number_of_cells)
+      for (unsigned int i = 0; i < number_of_cells; i++)
+      {
+        if ((voltages[i] < 3.9) || (voltages[i] > 4.1))
+        {
+          test_passed = false;
+          state = TestState::test_finished;
+          break;
+        }
+      }
       state = TestState::test_cell_balancing;
       break;
     case TestState::test_cell_balancing:
+      if(balancing_cell_counter != 0)
+      {
+        if ((voltages[balancing_cell_counter - 1] < 1.0) || (voltages[balancing_cell_counter - 1] > 1.2))
+        {
+          test_passed = false;
+          state = TestState::test_finished;
+          break;
+        }
+      }
+
       if(balancing_cell_counter < number_of_cells)
       {
         publish_balance_start(++balancing_cell_counter);
         write_on_display("Test balancing", "Zelle " + String(balancing_cell_counter));
-        // wait balance_time_ms
+        setTimer(5000);
         //check if cell voltage, which is balanced, drops to approx. 1,11V (resistor divider)
       }
       else
@@ -364,12 +419,28 @@ void loop() {
       break;
     case TestState::test_aux_voltage:
       write_on_display("Test ADC", "Gesamtspannung");
-      //publish_meas_total_voltage();
       // check if total voltage is expected value (Voltage of test supply)
+      if ((total_sys_volt < 47.5) || total_sys_volt > 48.5)
+      {
+        test_passed = false;
+        state = TestState::test_finished;
+        break;
+      }
+
       state = TestState::test_temp_voltages;
       break;
     case TestState::test_temp_voltages:
       write_on_display("Test Temperatursensoren", "Gesamtspannung");
+
+      if ((module_temps[0] < 24) || module_temps[0] > 26)
+      {
+        test_passed = false;
+      }
+      if ((module_temps[1] < 24) || module_temps[1] > 26)
+      {
+        test_passed = false;
+      }
+
       state = TestState::test_finished;
       break;
     case TestState::test_finished:
@@ -395,8 +466,6 @@ void loop() {
       state = TestState::idle;
       break;
   }
-
-  setTimer(2000);   // 2 seconds minimum loop time for every step
 }
 
 

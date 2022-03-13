@@ -50,11 +50,7 @@ String availability_topic = "easybms-test-adapter/available";
 WiFiClient wifiClient;
 PubSubClient client(mqtt_server, mqtt_port, wifiClient);
 
-String StepMessage;
-String StepMessage2;
 long int timer1;
-long int timedelay1;
-TestState state;
 
 String module_number = "1";
 String mac_address = "undefined";
@@ -63,13 +59,9 @@ int number_of_cells = 12;
 bool config_successfull = false;
 
 void read_all_buttons();
-void testdrawchar(void);
 void testregime();
-void writeMessageOnDisplay(String message);
-void writeMessage2OnDisplay(String message);
-bool checkTimer();
+bool timerPassed();
 void setTimer(long int timedelay);
-void writeStepOnDisplay();
 
 /*
 TODO:
@@ -194,6 +186,26 @@ void mqtt_callback(char *topic, byte *payload, unsigned int length) {
       mac_address = parsed;
     } 
   }
+  else if(topic_string.endsWith("module_voltage"))
+  {
+
+  }
+  else if(topic_string.endsWith("module_temps"))
+  {
+
+  }
+   else if(topic_string.endsWith("chip_temp"))
+  {
+
+  }
+  else if(topic_string.endsWith("is_balancing"))
+  {
+
+  }
+  else if(topic_string.endsWith("voltage"))
+  {
+
+  }
 }
 
 bool read_switch()
@@ -209,14 +221,24 @@ DipSwitch read_dip_switches()
   switches.DIP3 = !digitalRead(IN_SW_DIP3);
 
   return switches;
-  
 }
 
-void write_on_display(String message1, String message2) {
+void write_on_display(String message1, String message2 = "") {
+  //Clear the buffer
   display.clearDisplay();
-  writeStepOnDisplay();
-  writeMessageOnDisplay(message1);
-  writeMessage2OnDisplay(message2);
+
+  display.setTextSize(1);      // Normal 1:1 pixel scale
+  display.setTextColor(WHITE); // Draw white text
+  display.setCursor(0, 10);     // Start at top-left corner
+  display.cp437(true);         // Use full 256 char 'Code Page 437' font
+  display.println(message1);
+
+  if(message2 != "")
+  {
+    display.setCursor(0, 20);     // Start at top-left corner
+    display.println(message2);
+  }
+
   display.display();
 }
 
@@ -243,26 +265,11 @@ void setup() {
     Serial.println(F("SSD1306 allocation failed"));
     for(;;); // Don't proceed, loop forever
   }
-  display.display();
-  delay(2000); // Pause for 2 seconds
   
-    // Start the broker
-
-  //Clear the buffer
-  display.clearDisplay();
-  testdrawchar(); // Draw characters of the default font
-  delay(500); // Pause for 2 seconds
-  display.clearDisplay();
-  display.setTextSize(1);      // Normal 1:1 pixel scale
-  display.setTextColor(WHITE); // Draw white text
-  display.setCursor(0, 0);     // Start at top-left corner
-  display.cp437(true);         // Use full 256 char 'Code Page 437' font
-  display.println(F("Setup abgeschlossen"));
-  display.display();
-  delay(500);                       // wait for a second       
-
+  // Start the broker
+  write_on_display("Setup abgeschlossen");
+  delay(2000);                       // wait for 2 seconds       
   Serial.println("Finished Setup");
-  write_on_display("Test bereit", "Taster drücken");
 }
 
 
@@ -278,14 +285,21 @@ bool publish_slave_config() {
 
 // the loop function runs over and over again forever
 void loop() {
+  static TestState state;
+
   static int balancing_cell_counter = 0;
   static bool test_passed = false;
   //Serial.println("Starting loop");
   reconnect_mqtt();
   client.loop();
-  
+
+  if(!timerPassed())
+    return;
+
   switch (state) {
     case TestState::idle:
+      write_on_display("Test bereit", "Taster drücken");
+
       if(read_switch())
       {
         state = TestState::button_pressed;
@@ -381,6 +395,8 @@ void loop() {
       state = TestState::idle;
       break;
   }
+
+  setTimer(2000);   // 2 seconds minimum loop time for every step
 }
 
 
@@ -436,69 +452,12 @@ void testregime()
 
 void setTimer(long int timedelay)
 {
-  timer1=millis();
-  timedelay1= timedelay;
+  timer1 = millis() + timedelay;
 }
 
-bool checkTimer()
+bool timerPassed()
 {
-  int milli=millis();
   //Serial.print("Milli:");
   //Serial.println(milli);
-  if (milli>(timer1+timedelay1))
-    {
-      return true;
-    }
-  else
-    {
-      return false;
-    }
-}
-
-void testdrawchar(void){
-  display.clearDisplay();
-
-  display.setTextSize(1);      // Normal 1:1 pixel scale
-  display.setTextColor(WHITE); // Draw white text
-  display.setCursor(0, 0);     // Start at top-left corner
-  display.cp437(true);         // Use full 256 char 'Code Page 437' font
-
-  // Not all the characters will fit on the display. This is normal.
-  // Library will draw what it can and the rest will be clipped.
-  for(int16_t i=0; i<256; i++) {
-    if(i == '\n') display.write(' ');
-    else          display.write(i);
-  }
-
-  display.display();
-  delay(2000);
-}
-
-
-void writeMessageOnDisplay(String message)
-{
-  display.setTextSize(1);      // Normal 1:1 pixel scale
-  display.setTextColor(WHITE); // Draw white text
-  display.setCursor(0, 10);     // Start at top-left corner
-  display.cp437(true);         // Use full 256 char 'Code Page 437' font
-  display.println(message);
-}
-
-void writeMessage2OnDisplay(String message)
-{
-  display.setTextSize(1);      // Normal 1:1 pixel scale
-  display.setTextColor(WHITE); // Draw white text
-  display.setCursor(0, 20);     // Start at top-left corner
-  display.cp437(true);         // Use full 256 char 'Code Page 437' font
-  display.println(message);
-}
-
-
-void writeStepOnDisplay()
-{
-  display.setTextSize(1);      // Normal 1:1 pixel scale
-  display.setTextColor(WHITE); // Draw white text
-  display.setCursor(100, 0);     // Start at top-left corner
-  display.cp437(true);         // Use full 256 char 'Code Page 437' font
- 
+  return millis() > timer1;
 }

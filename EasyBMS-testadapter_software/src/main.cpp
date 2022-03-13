@@ -152,8 +152,8 @@ void reconnect_mqtt()
       // Once connected, publish an announcement...
       client.publish(availability_topic.c_str(), "online", true);
 
-      //client.subscribe("esp-module/+/available");
-      client.subscribe("esp-module/testroute/available");
+      client.subscribe("esp-module/+/available");
+      //client.subscribe("esp-module/testroute/available");
 
       // Routes to subscribe
       client.subscribe(String("esp-module/" + module_number + "/available").c_str());
@@ -287,6 +287,8 @@ void loop() {
   static bool test_passed = false;
   //Serial.println("Starting loop");
   reconnect_mqtt();
+  client.loop();
+  
   switch (state) {
     case TestState::idle:
       if(read_switch())

@@ -316,7 +316,7 @@ void loop() {
   static TestState state;
 
   static unsigned int balancing_cell_counter = 0;
-  static bool test_passed = false;
+  static bool test_passed = true;
   //Serial.println("Starting loop");
   reconnect_mqtt();
   client.loop();

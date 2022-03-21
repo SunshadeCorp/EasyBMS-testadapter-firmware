@@ -251,20 +251,40 @@ String split(String s, char parser, int index) {
   return rs;
 }
 
-void write_on_display(String message1, String message2 = "") {
+void write_on_display(String line1, String line2 = "") {
   //Clear the buffer
   display.clearDisplay();
 
   display.setTextSize(1);      // Normal 1:1 pixel scale
   display.setTextColor(WHITE); // Draw white text
-  display.setCursor(0, 10);     // Start at top-left corner
+  display.setCursor(0, 2);     // Start at top-left corner
   display.cp437(true);         // Use full 256 char 'Code Page 437' font
-  display.println(message1);
+  display.println(line1);
 
-  if(message2 != "")
+  if(line2 != "")
   {
-    display.setCursor(0, 20);     // Start at top-left corner
-    display.println(message2);
+    //display.setCursor(0, 20);     // Start at top-left corner
+    display.println(line2);
+  }
+
+  display.display();
+}
+
+void write_meas_on_display(String desc, float* arr, size_t nr)
+{
+  //Clear the buffer
+  display.clearDisplay();
+
+  display.setTextSize(1);      // Normal 1:1 pixel scale
+  display.setTextColor(WHITE); // Draw white text
+  display.setCursor(0, 2);     // Start at top-left corner
+  display.cp437(true);         // Use full 256 char 'Code Page 437' font
+  display.println(desc);
+
+  for(unsigned int i = 0; i < nr; i++)
+  {
+    display.print(arr[i], 3);
+    display.print("V,");
   }
 
   display.display();
@@ -317,9 +337,15 @@ void loop() {
 
   static unsigned int balancing_cell_counter = 0;
   static bool test_passed = true;
+  static bool button_pressed = false;
   //Serial.println("Starting loop");
   reconnect_mqtt();
   client.loop();
+
+  if(read_switch())
+  {
+    button_pressed = true;
+  }
 
   if(!timerPassed())
     return;
@@ -328,15 +354,16 @@ void loop() {
 
   switch (state) {
     case TestState::idle:
-      write_on_display("Test bereit", "Taster drücken");
+      write_on_display("Test bereit", "Taster druecken");
+//      Serial.println("");
 
-      if(read_switch())
+      if(button_pressed)
       {
         state = TestState::button_pressed;
       }
       break;
     case TestState::button_pressed:
-      write_on_display("Taster gedrückt", "Test startet");
+      write_on_display("Taster gedrueckt", "Test startet");
       Serial.println("button pressed, going on to test_conf_slave");
       read_dip_switches();
       digitalWrite(OUT_MOSFET2, HIGH);
@@ -351,17 +378,27 @@ void loop() {
         break;
       }
       publish_slave_config();
-      write_on_display("Test konfiguration", "über MQTT");
+      write_on_display("Test konfiguration", "ueber MQTT");
       
       if(config_successfull)
       {
-         state = TestState::test_cell_voltages_zero;
+        for(unsigned int i = 0; i < number_of_cells; i++)
+        {
+          voltages[i] = NAN;
+        }
+
+        module_temps[0] = NAN;
+        module_temps[1] = NAN;
+        total_sys_volt = NAN;
+        state = TestState::test_cell_voltages_zero;
       }       
         
       break;
     case TestState::test_cell_voltages_zero:
-      write_on_display("Test 0 V", "Zellspannungen");
+      write_meas_on_display("Test 0 V Zellspannungen: ", voltages, number_of_cells);
       // check if all cell voltages like expected (0 V)
+      state = TestState::activate_cell_voltages;
+
       for (unsigned int i = 0; i < number_of_cells; i++)
       {
         if (voltages[i] > 0.1)
@@ -371,7 +408,7 @@ void loop() {
           break;
         }
       }
-      state = TestState::activate_cell_voltages;
+
       break;
     case TestState::activate_cell_voltages:
       write_on_display("Aktiviere", "Zellspannungen");
@@ -380,8 +417,10 @@ void loop() {
       state = TestState::test_cell_voltages_real;
       break;
     case TestState::test_cell_voltages_real:
-      write_on_display("Test echte", "Zellspannungen");
+      write_meas_on_display("Test echte Zellspannungen", voltages, number_of_cells);
       // check if all cell voltage are like expected (total voltage / number_of_cells)
+      state = TestState::test_cell_balancing;
+
       for (unsigned int i = 0; i < number_of_cells; i++)
       {
         if ((voltages[i] < 3.9) || (voltages[i] > 4.1))
@@ -391,11 +430,12 @@ void loop() {
           break;
         }
       }
-      state = TestState::test_cell_balancing;
+      
       break;
     case TestState::test_cell_balancing:
       if(balancing_cell_counter != 0)
       {
+        //check if cell voltage, which is balanced, drops to approx. 1,11V (resistor divider)
         if ((voltages[balancing_cell_counter - 1] < 1.0) || (voltages[balancing_cell_counter - 1] > 1.2))
         {
           test_passed = false;
@@ -404,33 +444,35 @@ void loop() {
         }
       }
 
+      write_meas_on_display("Test balancing Zelle " + String(balancing_cell_counter), voltages, number_of_cells);
+
       if(balancing_cell_counter < number_of_cells)
       {
         publish_balance_start(++balancing_cell_counter);
-        write_on_display("Test balancing", "Zelle " + String(balancing_cell_counter));
         setTimer(5000);
-        //check if cell voltage, which is balanced, drops to approx. 1,11V (resistor divider)
       }
       else
       {
         balancing_cell_counter = 0;
         state = TestState::test_aux_voltage;
       }
+      
       break;
     case TestState::test_aux_voltage:
-      write_on_display("Test ADC", "Gesamtspannung");
+      write_meas_on_display("Test ADC Gesamtspannung", &total_sys_volt, 1);
       // check if total voltage is expected value (Voltage of test supply)
+      state = TestState::test_temp_voltages;
+
       if ((total_sys_volt < 47.5) || total_sys_volt > 48.5)
       {
         test_passed = false;
         state = TestState::test_finished;
-        break;
       }
 
-      state = TestState::test_temp_voltages;
       break;
     case TestState::test_temp_voltages:
-      write_on_display("Test Temperatursensoren", "Gesamtspannung");
+      write_meas_on_display("Test Temperatursensoren", module_temps, 2);
+      state = TestState::test_finished;
 
       if ((module_temps[0] < 24) || module_temps[0] > 26)
       {
@@ -441,7 +483,6 @@ void loop() {
         test_passed = false;
       }
 
-      state = TestState::test_finished;
       break;
     case TestState::test_finished:
       if(test_passed)
@@ -458,11 +499,13 @@ void loop() {
       digitalWrite(OUT_MOSFET1, LOW);
       digitalWrite(OUT_MOSFET2, LOW);
       mac_address = "undefined";
+      button_pressed = false;
       state = TestState::idle;
       break;
 
     default:
       Serial.println("Unknown Test State");
+      button_pressed = false;
       state = TestState::idle;
       break;
   }

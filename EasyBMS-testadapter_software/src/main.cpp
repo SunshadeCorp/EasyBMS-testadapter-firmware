@@ -37,6 +37,8 @@ enum class TestState {
   test_finished,
 };
 
+bool skip_zero_voltages_test = false;
+
 struct DipSwitch {
   uint8_t DIP1 : 1;
   uint8_t DIP2 : 1;
@@ -408,6 +410,13 @@ void loop() {
         
       break;
     case TestState::test_cell_voltages_zero:
+      if(skip_zero_voltages_test) {
+        state = TestState::test_finished;
+        log("Skip 0V Test: Test disabled");
+        log("TestState::test_finished");
+        break;
+      }
+
       write_meas_on_display("Test 0 V Zellspannungen: ", voltages, number_of_cells);
       // check if all cell voltages like expected (0 V)
       state = TestState::activate_cell_voltages;
@@ -415,6 +424,11 @@ void loop() {
 
       for (unsigned int i = 0; i < number_of_cells; i++)
       {
+        if (voltages[i] == NAN) {
+          // Not all values have arrived yet.
+          break;
+        }
+
         if (voltages[i] > 0.1)
         {
           test_passed = false;

@@ -346,6 +346,17 @@ bool publish_slave_config() {
   return client.publish(String("esp-module/" + mac_address + "/set_config").c_str(), String(module_number + ",1,0").c_str(), true);   // Slave konfiguriert mit Modulnummer 1 und als Gesamtspannungsmesser
 }
 
+void reset_measurements() {
+  for(unsigned int i = 0; i < number_of_cells; i++)
+  {
+    voltages[i] = NAN;
+  }
+
+  module_temps[0] = NAN;
+  module_temps[1] = NAN;
+  total_sys_volt = NAN;
+}
+
 // the loop function runs over and over again forever
 void loop() {
   static TestState state;
@@ -396,32 +407,24 @@ void loop() {
       
       if(config_successfull)
       {
-        for(unsigned int i = 0; i < number_of_cells; i++)
-        {
-          voltages[i] = NAN;
-        }
-
-        module_temps[0] = NAN;
-        module_temps[1] = NAN;
-        total_sys_volt = NAN;
+        reset_measurements();
         state = TestState::test_cell_voltages_zero;
         log("TestState::test_cell_voltages_zero");
       }       
         
       break;
     case TestState::test_cell_voltages_zero:
+
       if(skip_zero_voltages_test) {
-        state = TestState::test_finished;
+        state = TestState::activate_cell_voltages;
         log("Skip 0V Test: Test disabled");
-        log("TestState::test_finished");
+        log("TestState::activate_cell_voltages");
         break;
       }
 
       write_meas_on_display("Test 0 V Zellspannungen: ", voltages, number_of_cells);
-      // check if all cell voltages like expected (0 V)
-      state = TestState::activate_cell_voltages;
-      log("TestState::activate_cell_voltages");
 
+      // check if all cell voltages like expected (0 V)
       for (unsigned int i = 0; i < number_of_cells; i++)
       {
         if (voltages[i] == NAN) {
@@ -438,8 +441,11 @@ void loop() {
         }
       }
 
+      state = TestState::activate_cell_voltages;
+      log("TestState::activate_cell_voltages");
       break;
     case TestState::activate_cell_voltages:
+      reset_measurements();
       write_on_display("Aktiviere", "Zellspannungen");
       digitalWrite(OUT_MOSFET1, HIGH);
       setTimer(5000);

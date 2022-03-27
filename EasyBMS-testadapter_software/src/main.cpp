@@ -441,6 +441,7 @@ void loop() {
         }
       }
 
+      // Go to the next test if successful
       state = TestState::activate_cell_voltages;
       log("TestState::activate_cell_voltages");
       break;
@@ -455,11 +456,13 @@ void loop() {
     case TestState::test_cell_voltages_real:
       write_meas_on_display("Test echte Zellspannungen", voltages, number_of_cells);
       // check if all cell voltage are like expected (total voltage / number_of_cells)
-      state = TestState::test_cell_balancing;
-      log("TestState::test_cell_balancing");
-
       for (unsigned int i = 0; i < number_of_cells; i++)
       {
+        if (voltages[i] == NAN) {
+          // Not all voltages are ready yet.
+          break;
+        }
+
         if (voltages[i] < 3.9 || voltages[i] > 4.1)
         {
           test_passed = false;
@@ -471,6 +474,9 @@ void loop() {
         }
       }
       
+      // Go to balancing test if successful
+      state = TestState::test_cell_balancing;
+      log("TestState::test_cell_balancing");
       break;
     case TestState::test_cell_balancing:
       if(balancing_cell_counter != 0)

@@ -53,13 +53,15 @@ String log_topic = "easybms-test-adapter/log";
 WiFiClient wifiClient;
 PubSubClient client(mqtt_server, mqtt_port, wifiClient);
 
-unsigned long int timer1;
+unsigned long timer1;
+unsigned long voltages_timer;
 
 String module_number = "1";
 String mac_address = "undefined";
 auto balance_time_ms = 5000;
 unsigned int number_of_cells = 12;
 bool config_successfull = false;
+
 
 float voltages[12];
 float total_sys_volt;
@@ -410,6 +412,7 @@ void loop() {
         reset_measurements();
         state = TestState::test_cell_voltages_zero;
         log("TestState::test_cell_voltages_zero");
+        set_voltages_timer(10000);
       }       
         
       break;
@@ -429,6 +432,13 @@ void loop() {
       {
         if (voltages[i] == NAN) {
           // Not all values have arrived yet.
+          if(voltages_timeouted()) {
+            test_passed = false;
+            state = TestState::test_finished;
+            log("TestState::test_finished");
+            log("Test failed: Timeout while waiting for voltages from BMS slave.");
+          }
+
           break;
         }
 
@@ -450,6 +460,7 @@ void loop() {
       write_on_display("Aktiviere", "Zellspannungen");
       digitalWrite(OUT_MOSFET1, HIGH);
       setTimer(5000);
+      set_voltages_timer(10000);
       state = TestState::test_cell_voltages_real;
       log("TestState::test_cell_voltages_real");
       break;
@@ -460,6 +471,14 @@ void loop() {
       {
         if (voltages[i] == NAN) {
           // Not all voltages are ready yet.
+
+          if(voltages_timeouted()) {
+            test_passed = false;
+            state = TestState::test_finished;
+            log("TestState::test_finished");
+            log("Test failed: Timeout while waiting for voltages from BMS slave.");
+          }
+
           break;
         }
 
@@ -632,4 +651,12 @@ void setTimer(long int timedelay)
 bool timerPassed()
 {
   return millis() > timer1;
+}
+
+void set_voltages_timer(long timeout_time) {
+  voltages_timer = millis() + timeout_time;
+}
+
+bool voltages_timeouted() {
+  return millis() > voltages_timer;
 }
